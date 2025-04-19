@@ -7,6 +7,7 @@
 #![feature(vec_split_at_spare)]
 #![feature(inherent_associated_types)]
 #![feature(slice_pattern)]
+#![feature(decl_macro)]
 
 extern crate alloc;
 
@@ -28,12 +29,12 @@ use num_traits::{Float, MulAddAssign, NumCast, Zero};
 /// 
 /// let mut x = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
 /// 
-/// let mut dl = DelayLine::new();
-/// dl.resize(2);
+/// let mut delay = DelayLine::new();
+/// delay.resize(2);
 /// 
 /// for x in &mut x
 /// {
-///     *x += dl.delay(*x)*0.5;
+///     *x += delay.delay(*x)*0.5;
 /// }
 /// 
 /// assert_eq!(x, [1.0, 0.0, 0.5, 1.0, 0.0, 0.5])
@@ -51,16 +52,57 @@ pub type IntoIter<T, A = Global> = alloc::vec::IntoIter<T, A>;
 pub type Iter<'a, T> = Chain<core::slice::Iter<'a, T>, core::slice::Iter<'a, T>>;
 pub type IterMut<'a, T> = Chain<core::slice::IterMut<'a, T>, core::slice::IterMut<'a, T>>;
 
+pub macro delay_line {
+    [$($arg:tt)*] => {
+        DelayLine::from(alloc::vec!($($arg)*))
+    }
+}
+
 impl<T> DelayLine<T>
 {
+    /// Creates an empty [DelayLine].
+    /// 
+    /// # Examples
+    /// 
+    /// ```rust
+    /// use delay_line::DelayLine;
+    /// 
+    /// let delay = DelayLine::<f64>::new();
+    /// 
+    /// assert!(delay.is_empty());
+    /// ```
     pub fn new() -> Self
     {
         Self::new_in(Global)
     }
+    /// Creates an empty [DelayLine] with a given capacity.
+    /// 
+    /// # Examples
+    /// 
+    /// ```rust
+    /// use delay_line::DelayLine;
+    /// 
+    /// let delay = DelayLine::<f64>::with_capacity(32);
+    /// 
+    /// assert!(delay.is_empty());
+    /// assert_eq!(delay.capacity(), 32);
+    /// ```
     pub fn with_capacity(capacity: usize) -> Self
     {
         Self::with_capacity_in(capacity, Global)
     }
+    /// Tries to create an empty [DelayLine] with a given capacity, and returns an error if allocation fails.
+    /// 
+    /// # Examples
+    /// 
+    /// ```rust
+    /// use delay_line::DelayLine;
+    /// 
+    /// let delay = DelayLine::<f64>::try_with_capacity(32).expect("Allocation failed");
+    /// 
+    /// assert!(delay.is_empty());
+    /// assert_eq!(delay.capacity(), 32);
+    /// ```
     pub fn try_with_capacity(capacity: usize) -> Result<Self, TryReserveError>
     {
         Self::try_with_capacity_in(capacity, Global)
@@ -79,40 +121,128 @@ where
     where
         T: 'a;
 
+    /// Creates an empty [DelayLine] using a custom allocator.
+    /// 
+    /// # Examples
+    /// 
+    /// ```rust
+    /// #![feature(allocator_api)]
+    /// 
+    /// use delay_line::DelayLine;
+    /// use std::alloc::Global;
+    /// 
+    /// let delay = DelayLine::<f64>::new_in(Global);
+    /// 
+    /// assert!(delay.is_empty());
+    /// ```
     pub fn new_in(alloc: A) -> Self
     {
-        Self {
-            buffer: Vec::new_in(alloc),
-            offset: 0
-        }
+        Self::from(Vec::new_in(alloc))
     }
+    /// Creates an empty [DelayLine] with a given capacity.
+    /// 
+    /// # Examples
+    /// 
+    /// ```rust
+    /// #![feature(allocator_api)]
+    /// 
+    /// use delay_line::DelayLine;
+    /// use std::alloc::Global;
+    /// 
+    /// let delay = DelayLine::<f64>::with_capacity_in(32, Global);
+    /// 
+    /// assert!(delay.is_empty());
+    /// assert_eq!(delay.capacity(), 32);
+    /// ```
     pub fn with_capacity_in(capacity: usize, alloc: A) -> Self
     {
-        Self {
-            buffer: Vec::with_capacity_in(capacity, alloc),
-            offset: 0
-        }
+        Self::from(Vec::with_capacity_in(capacity, alloc))
     }
+    /// Tries to create an empty [DelayLine] with a given capacity, and returns an error if allocation fails.
+    /// 
+    /// # Examples
+    /// 
+    /// ```rust
+    /// #![feature(allocator_api)]
+    /// 
+    /// use delay_line::DelayLine;
+    /// use std::alloc::Global;
+    /// 
+    /// let delay = DelayLine::<f64>::try_with_capacity_in(32, Global).expect("Allocation failed");
+    /// 
+    /// assert!(delay.is_empty());
+    /// assert_eq!(delay.capacity(), 32);
+    /// ```
     pub fn try_with_capacity_in(capacity: usize, alloc: A) -> Result<Self, TryReserveError>
     {
-        Ok(Self {
-            buffer: Vec::try_with_capacity_in(capacity, alloc)?,
-            offset: 0
-        })
+        Ok(Self::from(Vec::try_with_capacity_in(capacity, alloc)?))
     }
 
+    /// Retrieves a reference to the allocator.
+    /// 
+    /// # Examples
+    /// 
+    /// ```rust
+    /// #![feature(allocator_api)]
+    /// 
+    /// use delay_line::DelayLine;
+    /// use std::alloc::Global;
+    /// 
+    /// let delay = DelayLine::<f64>::new();
+    /// 
+    /// assert!(matches!(delay.allocator(), &Global));
+    /// ```
     pub fn allocator(&self) -> &A
     {
         self.buffer.allocator()
     }
+    /// Checks wether or not the [DelayLine] is empty.
+    /// 
+    /// # Examples
+    /// 
+    /// ```rust
+    /// use delay_line::DelayLine;
+    /// 
+    /// let delay = DelayLine::<f64>::new();
+    /// 
+    /// assert!(delay.is_empty());
+    /// ```
     pub fn is_empty(&self) -> bool
     {
         self.buffer.is_empty()
     }
+    /// Returns the length of the [DelayLine] in samples.
+    /// 
+    /// # Examples
+    /// 
+    /// ```rust
+    /// use delay_line::*;
+    /// 
+    /// let delay = delay_line![0.0; 5];
+    /// 
+    /// assert_eq!(delay.len(), 5);
+    /// ```
     pub fn len(&self) -> usize
     {
         self.buffer.len()
     }
+    /// Returns the length of the [DelayLine] in seconds.
+    /// 
+    /// ```rust
+    /// use delay_line::*;
+    /// 
+    /// let sample_rate = 8000.0;
+    /// let delay = delay_line![0.0; 5];
+    /// 
+    /// assert_eq!(delay.len_seconds(sample_rate), 5.0/sample_rate);
+    /// ```
+    pub fn len_seconds<F>(&self, rate: F) -> F
+    where
+        F: Float
+    {
+        F::from(self.len()).unwrap()/rate
+    }
+    /// Returns the capacity of the [DelayLine] in samples.
     pub fn capacity(&self) -> usize
     {
         self.buffer.capacity()
