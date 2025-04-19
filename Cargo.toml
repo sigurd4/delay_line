@@ -1,13 +1,13 @@
 [package]
 name = "delay_line"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Sigurd Sætherø Spangelo"]
 edition = "2024"
 license = "MIT"
 description = "A delay-line buffer for real-time use."
 repository = "https://github.com/sigurd4/delay_line"
 keywords = ["delay", "audio", "vst"]
-categories = ["algorithms", "multimedia::audio", "no-std::no-alloc"]
+categories = ["algorithms", "multimedia::audio", "no-std"]
 
 [dependencies]
 num-traits = "0.2.19"
