@@ -1,3 +1,1 @@
-A similar data-structure to a `VecDeque`, in that it is cyclic, but instead of cycling around its capacity, it cycles around its length. This makes rotation and SISO-behaviour simpler, but all operations that change the delay-line's length require it to be made contiguous first.
-
-It's a more limited than `VecDeque`, and only gives a miniscule performance boost for delay-line usage. For all other cases, you should probably just use `VecDeque`.
+A delay-line buffer for real-time use
