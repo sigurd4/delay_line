@@ -1,4 +1,4 @@
-A delay-line buffer for real-time use
+A delay-line buffer for real-time use.
 
 # Examples
 
