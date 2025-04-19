@@ -10,53 +10,66 @@
 #![feature(decl_macro)]
 
 //! A delay-line buffer for real-time use.
-//! 
+//!
 //! # Examples
-//! 
+//!
 //! In this example, we mix in a delayed version of the signal `x`, delayed by 2 samples.
-//! 
+//!
 //! ```rust
 //! use delay_line::*;
-//! 
+//!
 //! let mut x = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
-//! 
+//!
 //! let mut delay = delay_line![0.0; 2];
-//! 
+//!
 //! for x in &mut x
 //! {
 //!     *x += delay.delay(*x)*0.5;
 //! }
-//! 
+//!
 //! assert_eq!(x, [1.0, 0.0, 0.5, 1.0, 0.0, 0.5])
 //! ```
 
 extern crate alloc;
 
-use core::{cmp::Ordering, hash::Hash, iter::Chain, ops::{AddAssign, SubAssign}, slice::SlicePattern};
-use alloc::{alloc::{Allocator, Global}, boxed::Box, collections::{TryReserveError, VecDeque}, vec::Vec};
+use alloc::{
+    alloc::{Allocator, Global},
+    boxed::Box,
+    collections::{TryReserveError, VecDeque},
+    vec::Vec
+};
+use core::{
+    cmp::Ordering,
+    hash::Hash,
+    iter::Chain,
+    ops::{AddAssign, SubAssign},
+    slice::SlicePattern
+};
 
 use num_traits::{Float, MulAddAssign, NumCast, Zero};
 
-/// A similar data-structure to a [VecDeque](VecDeque), in that it is cyclic, but instead of cycling around its capacity, it cycles around its length. This makes rotation and SISO-behaviour simpler, but all operations that change the delay-line's length require it to be made contiguous first.
-/// 
-/// It's a more limited than [VecDeque](VecDeque), and only gives a miniscule performance boost for delay-line usage. For all other cases, you should probably just use [VecDeque](VecDeque).
-/// 
+/// A similar data-structure to a [VecDeque](VecDeque), in that it is cyclic, but instead of cycling around its capacity, it cycles around its length. This makes rotation
+/// and SISO-behaviour simpler, but all operations that change the delay-line's length require it to be made contiguous first.
+///
+/// It's a more limited than [VecDeque](VecDeque), and only gives a miniscule performance boost for delay-line usage. For all other cases, you should probably just use
+/// [VecDeque](VecDeque).
+///
 /// # Examples
-/// 
+///
 /// In this example, we mix in a delayed version of the signal `x`, delayed by 2 samples.
-/// 
+///
 /// ```rust
 /// use delay_line::*;
-/// 
+///
 /// let mut x = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
-/// 
+///
 /// let mut delay = delay_line![0.0; 2];
-/// 
+///
 /// for x in &mut x
 /// {
 ///     *x += delay.delay(*x)*0.5;
 /// }
-/// 
+///
 /// assert_eq!(x, [1.0, 0.0, 0.5, 1.0, 0.0, 0.5])
 /// ```
 #[derive(Debug, Clone, Hash)]
@@ -81,29 +94,30 @@ pub macro delay_line {
 impl<T> DelayLine<T>
 {
     /// Creates an empty [DelayLine].
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```rust
     /// use delay_line::DelayLine;
-    /// 
+    ///
     /// let delay = DelayLine::<f64>::new();
-    /// 
+    ///
     /// assert!(delay.is_empty());
     /// ```
     pub fn new() -> Self
     {
         Self::new_in(Global)
     }
+
     /// Creates an empty [DelayLine] with a given capacity.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```rust
     /// use delay_line::DelayLine;
-    /// 
+    ///
     /// let delay = DelayLine::<f64>::with_capacity(32);
-    /// 
+    ///
     /// assert!(delay.is_empty());
     /// assert_eq!(delay.capacity(), 32);
     /// ```
@@ -111,15 +125,16 @@ impl<T> DelayLine<T>
     {
         Self::with_capacity_in(capacity, Global)
     }
+
     /// Tries to create an empty [DelayLine] with a given capacity, and returns an error if allocation fails.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```rust
     /// use delay_line::DelayLine;
-    /// 
+    ///
     /// let delay = DelayLine::<f64>::try_with_capacity(32).expect("Allocation failed");
-    /// 
+    ///
     /// assert!(delay.is_empty());
     /// assert_eq!(delay.capacity(), 32);
     /// ```
@@ -134,43 +149,46 @@ where
     A: Allocator
 {
     pub type IntoIter = IntoIter<T, A>;
-    pub type Iter<'a> = Iter<'a, T>
+    pub type Iter<'a>
+        = Iter<'a, T>
     where
         T: 'a;
-    pub type IterMut<'a> = IterMut<'a, T>
+    pub type IterMut<'a>
+        = IterMut<'a, T>
     where
         T: 'a;
 
     /// Creates an empty [DelayLine] using a custom allocator.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```rust
     /// #![feature(allocator_api)]
-    /// 
+    ///
     /// use delay_line::DelayLine;
     /// use std::alloc::Global;
-    /// 
+    ///
     /// let delay = DelayLine::<f64>::new_in(Global);
-    /// 
+    ///
     /// assert!(delay.is_empty());
     /// ```
     pub fn new_in(alloc: A) -> Self
     {
         Self::from(Vec::new_in(alloc))
     }
+
     /// Creates an empty [DelayLine] with a given capacity.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```rust
     /// #![feature(allocator_api)]
-    /// 
+    ///
     /// use delay_line::DelayLine;
     /// use std::alloc::Global;
-    /// 
+    ///
     /// let delay = DelayLine::<f64>::with_capacity_in(32, Global);
-    /// 
+    ///
     /// assert!(delay.is_empty());
     /// assert_eq!(delay.capacity(), 32);
     /// ```
@@ -178,18 +196,19 @@ where
     {
         Self::from(Vec::with_capacity_in(capacity, alloc))
     }
+
     /// Tries to create an empty [DelayLine] with a given capacity, and returns an error if allocation fails.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```rust
     /// #![feature(allocator_api)]
-    /// 
+    ///
     /// use delay_line::DelayLine;
     /// use std::alloc::Global;
-    /// 
+    ///
     /// let delay = DelayLine::<f64>::try_with_capacity_in(32, Global).expect("Allocation failed");
-    /// 
+    ///
     /// assert!(delay.is_empty());
     /// assert_eq!(delay.capacity(), 32);
     /// ```
@@ -199,69 +218,73 @@ where
     }
 
     /// Retrieves a reference to the allocator.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```rust
     /// #![feature(allocator_api)]
-    /// 
+    ///
     /// use delay_line::DelayLine;
     /// use std::alloc::Global;
-    /// 
+    ///
     /// let delay = DelayLine::<f64>::new();
-    /// 
+    ///
     /// assert!(matches!(delay.allocator(), &Global));
     /// ```
     pub fn allocator(&self) -> &A
     {
         self.buffer.allocator()
     }
+
     /// Checks wether or not the [DelayLine] is empty.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```rust
     /// use delay_line::DelayLine;
-    /// 
+    ///
     /// let delay = DelayLine::<f64>::new();
-    /// 
+    ///
     /// assert!(delay.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool
     {
         self.buffer.is_empty()
     }
+
     /// Returns the length of the [DelayLine] in samples.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```rust
     /// use delay_line::*;
-    /// 
+    ///
     /// let delay = delay_line![0.0; 5];
-    /// 
+    ///
     /// assert_eq!(delay.len(), 5);
     /// ```
     pub fn len(&self) -> usize
     {
         self.buffer.len()
     }
+
     /// Returns the length of the [DelayLine] in seconds.
-    /// 
+    ///
     /// ```rust
     /// use delay_line::*;
-    /// 
+    ///
     /// let sample_rate = 8000.0;
     /// let delay = delay_line![0.0; 5];
-    /// 
+    ///
     /// assert_eq!(delay.len_seconds(sample_rate), 5.0/sample_rate);
     /// ```
     pub fn len_seconds<F>(&self, rate: F) -> F
     where
         F: Float
     {
-        F::from(self.len()).unwrap()/rate
+        F::from(self.len()).unwrap() / rate
     }
+
     /// Returns the capacity of the [DelayLine] in samples.
     pub fn capacity(&self) -> usize
     {
@@ -273,6 +296,7 @@ where
         self.buffer.rotate_left(core::mem::replace(&mut self.offset, 0));
         &mut self.buffer
     }
+
     pub fn make_offset(&mut self, mut offset: usize)
     {
         let l = self.len();
@@ -285,14 +309,17 @@ where
     {
         self.buffer.reserve(additional);
     }
+
     pub fn reserve_exact(&mut self, additional: usize)
     {
         self.buffer.reserve_exact(additional);
     }
+
     pub fn try_reserve(&mut self, additional: usize) -> Result<(), TryReserveError>
     {
         self.buffer.try_reserve(additional)
     }
+
     pub fn try_reserve_exact(&mut self, additional: usize) -> Result<(), TryReserveError>
     {
         self.buffer.try_reserve_exact(additional)
@@ -302,6 +329,7 @@ where
     {
         self.buffer.shrink_to_fit();
     }
+
     pub fn shrink_to(&mut self, min_capacity: usize)
     {
         self.buffer.shrink_to(min_capacity);
@@ -309,40 +337,39 @@ where
 
     pub fn as_slices(&self) -> (&[T], &[T])
     {
-        let (slice2, slice1) = unsafe {
-            self.buffer.as_slice()
-                .split_at_unchecked(self.offset)
-        };
+        let (slice2, slice1) = unsafe { self.buffer.as_slice().split_at_unchecked(self.offset) };
         (slice1, slice2)
     }
+
     pub fn as_mut_slices(&mut self) -> (&mut [T], &mut [T])
     {
-        let (slice2, slice1) = unsafe {
-            self.buffer.as_mut_slice()
-                .split_at_mut_unchecked(self.offset)
-        };
+        let (slice2, slice1) = unsafe { self.buffer.as_mut_slice().split_at_mut_unchecked(self.offset) };
         (slice1, slice2)
     }
+
     pub fn leak<'a>(self) -> &'a mut [T]
     where
         A: 'a
     {
         Vec::from(self).leak()
     }
+
     pub fn into_boxed_slice(self) -> Box<[T], A>
     {
         Vec::from(self).into_boxed_slice()
     }
 
-    pub fn into_iter(self) -> Self::IntoIter
+    fn into_iter(self) -> Self::IntoIter
     {
         Vec::from(self).into_iter()
     }
+
     pub fn iter(&self) -> Self::Iter<'_>
     {
         let (slice1, slice2) = self.as_slices();
         slice1.iter().chain(slice2.iter())
     }
+
     pub fn iter_mut(&mut self) -> Self::IterMut<'_>
     {
         let (slice1, slice2) = self.as_mut_slices();
@@ -360,17 +387,18 @@ where
     {
         if len == self.len()
         {
-            return
+            return;
         }
         self.make_contiguous().truncate(len);
     }
+
     pub fn resize(&mut self, len: usize)
     where
         T: Zero + Clone
     {
         if len == self.len()
         {
-            return
+            return;
         }
         self.make_contiguous().resize(len, Zero::zero());
     }
@@ -382,6 +410,7 @@ where
         self.offset += (j >= l) as usize;
         self.buffer.insert(j % l, x)
     }
+
     pub fn remove(&mut self, i: usize) -> Option<T>
     {
         let l = self.len();
@@ -398,21 +427,22 @@ where
     {
         self.make_contiguous().push(value)
     }
+
     pub fn push_in_within_capacity(&mut self, value: T) -> Result<(), T>
     {
         if self.len() == self.capacity()
         {
-            return Err(value)
+            return Err(value);
         }
-        Ok(unsafe {
-            self.make_contiguous().push_within_capacity(value).unwrap_unchecked()
-        })
+        self.make_contiguous().push_within_capacity(value)
     }
+
     pub fn push_out(&mut self, value: T)
     {
         self.push_in(value);
         self.unrotate(1);
     }
+
     pub fn push_out_within_capacity(&mut self, value: T) -> Result<(), T>
     {
         let result = self.push_in_within_capacity(value);
@@ -424,26 +454,27 @@ where
     {
         self.make_contiguous().pop()
     }
+
     pub fn pop_in_if(&mut self, predicate: impl FnOnce(&T) -> bool) -> Option<T>
     {
         self.pop_in_if_mut(|x| predicate(x))
     }
+
     pub fn pop_in_if_mut(&mut self, predicate: impl FnOnce(&mut T) -> bool) -> Option<T>
     {
         let output = self.output_mut()?;
         if !predicate(output)
         {
-            return None
+            return None;
         }
-        unsafe {
-            Some(self.pop_in().unwrap_unchecked())
-        }
+        unsafe { Some(self.pop_in().unwrap_unchecked()) }
     }
 
     pub fn output(&self) -> Option<&T>
     {
         self.buffer.get(self.offset)
     }
+
     pub fn output_mut(&mut self) -> Option<&mut T>
     {
         self.buffer.get_mut(self.offset)
@@ -455,6 +486,7 @@ where
         let i = l.checked_sub(1)?;
         Some((i + self.offset) % l)
     }
+
     fn i(&self, i: usize) -> Option<usize>
     {
         let l = self.len();
@@ -464,31 +496,25 @@ where
     pub fn input(&self) -> Option<&T>
     {
         let i = self.i_in()?;
-        unsafe {
-            Some(self.buffer.get_unchecked(i))
-        }
+        unsafe { Some(self.buffer.get_unchecked(i)) }
     }
+
     pub fn input_mut(&mut self) -> Option<&mut T>
     {
         let i = self.i_in()?;
-        unsafe {
-            Some(self.buffer.get_unchecked_mut(i))
-        }
+        unsafe { Some(self.buffer.get_unchecked_mut(i)) }
     }
 
     pub fn get(&self, mut i: usize) -> Option<&T>
     {
         i = self.i(i)?;
-        unsafe {
-            Some(self.buffer.get_unchecked(i))
-        }
+        unsafe { Some(self.buffer.get_unchecked(i)) }
     }
+
     pub fn get_mut(&mut self, mut i: usize) -> Option<&mut T>
     {
         i = self.i(i)?;
-        unsafe {
-            Some(self.buffer.get_unchecked_mut(i))
-        }
+        unsafe { Some(self.buffer.get_unchecked_mut(i)) }
     }
 
     pub fn rotate(&mut self, n: usize)
@@ -496,6 +522,7 @@ where
         self.offset += n;
         self.offset %= self.len();
     }
+
     pub fn unrotate(&mut self, n: usize)
     {
         let l = self.len();
@@ -512,17 +539,19 @@ where
         self.rotate(1);
         y
     }
+
     pub fn delay_feedback(&mut self, x: T, feedback: T) -> T
     where
         T: Float + MulAddAssign
     {
         let y = match self.output_mut()
         {
-            Some(out) => {
+            Some(out) =>
+            {
                 let y = *out;
                 out.mul_add_assign(feedback, x);
                 y
-            },
+            }
             None => return x
         };
         self.rotate(1);
@@ -543,27 +572,19 @@ where
         T: Float
     {
         let l = self.len();
-        l.checked_sub(1)
-            .and_then(<T as NumCast>::from)
-            .map(|ll| {
-                let i = tap*ll;
+        l.checked_sub(1).and_then(<T as NumCast>::from).map(|ll| {
+            let i = tap * ll;
 
-                let p = i.fract();
-                let q = T::one() - p;
+            let p = i.fract();
+            let q = T::one() - p;
 
-                let read = |i: T, m: T| {
-                    i.to_usize()
-                        .and_then(|i| self.get(i))
-                        .copied()
-                        .map(|x| x*m)
-                        .unwrap_or_else(T::zero)
-                };
-                
-                let xq = read(i.floor(), q);
-                let xp = read(i.ceil(), p);
-                
-                xq + xp
-            })
+            let read = |i: T, m: T| i.to_usize().and_then(|i| self.get(i)).copied().map(|x| x * m).unwrap_or_else(T::zero);
+
+            let xq = read(i.floor(), q);
+            let xp = read(i.ceil(), p);
+
+            xq + xp
+        })
     }
 
     fn rw_tap(&mut self, tap: T, dx: impl FnOnce(&mut Self, Option<usize>, Option<usize>, T, T) -> T, write: impl Fn(&mut T, T))
@@ -571,23 +592,23 @@ where
         T: Float
     {
         let l = self.len();
-        if let Some(ll) = l.checked_sub(1)
-            .and_then(<T as NumCast>::from)
+        if let Some(ll) = l.checked_sub(1).and_then(<T as NumCast>::from)
         {
-            let i = tap*ll;
+            let i = tap * ll;
 
             let p = i.fract();
             let q = T::one() - p;
-            
+
             let j0 = i.floor().to_usize();
             let j1 = i.ceil().to_usize();
-            
+
             let dx = dx(self, j0, j1, q, p);
 
             let mut write = |j: Option<usize>, m: T| {
-                if let Some(j) = j && let Some(dst) = self.get_mut(j)
+                if let Some(j) = j
+                    && let Some(dst) = self.get_mut(j)
                 {
-                    write(dst, dx*m)
+                    write(dst, dx * m)
                 }
             };
 
@@ -600,30 +621,14 @@ where
     where
         T: Float + AddAssign
     {
-        self.rw_tap(
-            tap,
-            |_, _, _, _, _| {
-                x
-            },
-            |y, dx| {
-                *y += dx
-            }
-        );
+        self.rw_tap(tap, |_, _, _, _, _| x, |y, dx| *y += dx);
     }
 
     pub fn sub_tap(&mut self, tap: T, x: T)
     where
         T: Float + SubAssign
     {
-        self.rw_tap(
-            tap,
-            |_, _, _, _, _| {
-                x
-            },
-            |y, dx| {
-                *y -= dx
-            }
-        );
+        self.rw_tap(tap, |_, _, _, _, _| x, |y, dx| *y -= dx);
     }
 
     pub fn map_tap(&mut self, tap: T, x: impl FnOnce(T) -> T)
@@ -633,11 +638,7 @@ where
         self.rw_tap(
             tap,
             |this, j0, j1, q, p| {
-                
-                let read = |j: Option<usize>, m: T| {
-                    j.and_then(|j| this.get(j).copied().map(|x| x*m))
-                        .unwrap_or_else(T::zero)
-                };
+                let read = |j: Option<usize>, m: T| j.and_then(|j| this.get(j).copied().map(|x| x * m)).unwrap_or_else(T::zero);
 
                 let yq = read(j0, q);
                 let yp = read(j1, p);
@@ -645,9 +646,7 @@ where
                 let y = yq + yp;
                 x(y) - y
             },
-            |y, dx| {
-                *y += dx
-            }
+            |y, dx| *y += dx
         );
     }
 
@@ -670,43 +669,40 @@ where
 
         let zero = T::zero();
         let one = T::one();
-    
+
         let c = |i: usize, a: T| {
-            T::from(i)
-                .and_then(|i| {
-                    let mut p = i*a;
-                    if let (Some(j0), Some(j1)) = (p.floor().to_usize(), p.ceil().to_usize())
-                    {
-                        p = p.fract();
-                        let q = one - p;
-                
-                        Some((j0, j1, q, p))
-                    }
-                    else
-                    {
-                        None
-                    }
-                })
+            T::from(i).and_then(|i| {
+                let mut p = i * a;
+                if let (Some(j0), Some(j1)) = (p.floor().to_usize(), p.ceil().to_usize())
+                {
+                    p = p.fract();
+                    let q = one - p;
+
+                    Some((j0, j1, q, p))
+                }
+                else
+                {
+                    None
+                }
+            })
         };
-    
+
         self.make_contiguous();
         if len < l0
         {
             if len != 0
             {
-                let a = T::from(len - 1).unwrap()/T::from(l0 - 1).unwrap();
+                let a = T::from(len - 1).unwrap() / T::from(l0 - 1).unwrap();
                 for i in 0..l0
                 {
-                    let mut x = core::mem::replace(unsafe {
-                        self.buffer.get_unchecked_mut(i)
-                    }, zero);
+                    let mut x = core::mem::replace(unsafe { self.buffer.get_unchecked_mut(i) }, zero);
 
                     if let Some((j0, j1, q, p)) = c(i, a)
                     {
-                        x = x*a;
+                        x = x * a;
                         unsafe {
-                            *self.buffer.get_unchecked_mut(j0) += x*q;
-                            *self.buffer.get_unchecked_mut(j1) += x*p;
+                            *self.buffer.get_unchecked_mut(j0) += x * q;
+                            *self.buffer.get_unchecked_mut(j1) += x * p;
                         }
                     }
                 }
@@ -718,13 +714,13 @@ where
             self.buffer.resize(len, T::zero());
             if l0 != 0
             {
-                let a = T::from(l0 - 1).unwrap()/T::from(len - 1).unwrap();
+                let a = T::from(l0 - 1).unwrap() / T::from(len - 1).unwrap();
                 for i in (0..len).rev()
                 {
                     unsafe {
-                        *self.buffer.get_unchecked_mut(i) = c(i, a).map(|(j0, j1, q, p)| {
-                            *self.buffer.get_unchecked(j0)*q + *self.buffer.get_unchecked(j1)*p
-                        }).unwrap_or(zero);
+                        *self.buffer.get_unchecked_mut(i) = c(i, a)
+                            .map(|(j0, j1, q, p)| *self.buffer.get_unchecked(j0) * q + *self.buffer.get_unchecked(j1) * p)
+                            .unwrap_or(zero);
                     }
                 }
             }
@@ -749,10 +745,7 @@ where
 {
     fn from(buffer: Vec<T, A>) -> Self
     {
-        Self {
-            buffer,
-            offset: 0
-        }
+        Self { buffer, offset: 0 }
     }
 }
 impl<T, A> From<VecDeque<T, A>> for DelayLine<T, A>
@@ -847,7 +840,8 @@ where
 {
     match sa.len().cmp(&oa.len())
     {
-        Ordering::Less => {
+        Ordering::Less =>
+        {
             let front = sa.len();
             let mid = oa.len() - front;
 
@@ -857,9 +851,10 @@ where
             debug_assert_eq!(sb_mid.len(), oa_mid.len());
             debug_assert_eq!(sb_back.len(), ob.len());
             sa == oa_front && sb_mid == oa_mid && sb_back == ob
-        },
+        }
         Ordering::Equal => sa == oa && sb == ob,
-        Ordering::Greater => {
+        Ordering::Greater =>
+        {
             let front = oa.len();
             let mid = sa.len() - front;
 
@@ -869,7 +864,7 @@ where
             debug_assert_eq!(sa_mid.len(), ob_mid.len());
             debug_assert_eq!(sb.len(), ob_back.len());
             sa_front == oa && sa_mid == ob_mid && sb == ob_back
-        },
+        }
     }
 }
 
@@ -1031,7 +1026,6 @@ where
     T: Eq,
     A: Allocator
 {
-    
 }
 impl<T, A> Ord for DelayLine<T, A>
 where
@@ -1081,7 +1075,7 @@ mod tests
         for x in &mut x
         {
             *x += dl.delay(*x);
-            *dl.input_mut().unwrap() -= 0.1**x
+            *dl.input_mut().unwrap() -= 0.1 * *x
         }
 
         println!("{:?}", x)
